@@ -1,0 +1,37 @@
+{
+  "name": "malzz-nokos",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "axios": "^1.16.1",
+    "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "firebase": "^12.13.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "next": "^15.1.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "react-hot-toast": "^2.6.0",
+    "tailwind-merge": "^3.6.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.0",
+    "@types/node": "^22.14.0",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "firebase-admin": "^13.10.0",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^4.1.14",
+    "typescript": "~5.8.2"
+  }
+}
