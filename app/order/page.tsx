@@ -6,8 +6,6 @@ import axios from 'axios';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy } from 'lucide-react';
-import { db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, increment, addDoc, collection } from 'firebase/firestore';
 
 export default function Order() {
   const { user, userData, loading } = useAuth();
@@ -19,7 +17,6 @@ export default function Order() {
   const [selectedCountry, setSelectedCountry] = useState('');
   const [selectedOperator, setSelectedOperator] = useState('any');
   
-  const [markup, setMarkup] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(false);
   
   // OTP State
@@ -27,11 +24,6 @@ export default function Order() {
 
   useEffect(() => {
     axios.get('/api/services').then(res => setServices(res.data?.data || []));
-    getDoc(doc(db, 'settings', 'pricing')).then(docSnap => {
-      if (docSnap.exists()) {
-        setMarkup(docSnap.data().markup || 0);
-      }
-    });
   }, []);
 
   useEffect(() => {
@@ -51,34 +43,18 @@ export default function Order() {
   }, [selectedCountry, selectedService]);
 
   useEffect(() => {
-    if (!activeOrder?.order_id || !user) return;
+    if (!activeOrder?.order_id) return;
 
     const interval = setInterval(async () => {
       try {
         const res = await axios.get(`/api/otp?order_id=${activeOrder.order_id}`);
         // assume api returns { data: { status: 'success', sms: '...', number: '...' } }
         if (res.data?.data) {
-          const newData = res.data.data;
-          setActiveOrder((prev: any) => ({ ...prev, ...newData }));
-          
-          if (newData.status === 'success' || newData.status === 'cancel') {
+          setActiveOrder(res.data.data);
+          if (res.data.data.status === 'success' || res.data.data.status === 'cancel') {
             clearInterval(interval);
-            
-            if (activeOrder.firestoreDocId) {
-                await updateDoc(doc(db, 'orders', activeOrder.firestoreDocId), {
-                    status: newData.status,
-                    sms: newData.sms || null
-                });
-            }
-
-            if (newData.status === 'success') {
-                await addDoc(collection(db, 'notifications'), {
-                  userId: user.uid,
-                  message: `OTP untuk ${newData.number} telah masuk!`,
-                  type: 'success',
-                  read: false,
-                  createdAt: new Date().toISOString()
-                });
+            if (res.data.data.status === 'success') {
+                toast.success('OTP Berhasil diterima!');
             }
           }
         }
@@ -88,20 +64,12 @@ export default function Order() {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [activeOrder?.order_id, user, activeOrder?.firestoreDocId]);
+  }, [activeOrder?.order_id]);
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedService || !selectedCountry || !user) {
+    if (!selectedService || !selectedCountry) {
       toast.error('Pilih layanan dan negara!');
-      return;
-    }
-
-    const serviceObj = services.find(s => s.id.toString() === selectedService);
-    let estimatedPrice = (serviceObj ? Number(serviceObj.price) : 0) + markup;
-    
-    if (userData?.balance < estimatedPrice) {
-      toast.error('Saldo tidak cukup!');
       return;
     }
     
@@ -114,33 +82,11 @@ export default function Order() {
     try {
       const res = await axios.get(url);
       if (res.data?.data?.order_id) {
-        // Assume API price returns real price as `res.data.data.price` but fallback to estimated
-        const actualPrice = Number(res.data.data.price || estimatedPrice) + markup;
-        
-        await updateDoc(doc(db, 'users', user.uid), {
-          balance: increment(-actualPrice)
-        });
-
-        // Add to history
-        const orderDocRef = await addDoc(collection(db, 'orders'), {
-          orderId: res.data.data.order_id,
-          userId: user.uid,
-          service: serviceObj?.name || 'Unknown',
-          number: res.data.data.number,
-          status: 'pending',
-          price: actualPrice,
-          createdAt: new Date().toISOString()
-        });
-
-        // Track active order locally and push a notification
+        toast.success('Order berhasil dibuat!');
         setActiveOrder({
           ...res.data.data,
-          status: 'pending',
-          deductedAmount: actualPrice,
-          firestoreDocId: orderDocRef.id
+          status: 'pending'
         });
-        
-        toast.success('Order berhasil. Menunggu SMS...');
       } else {
         toast.error('Gagal membuat order');
       }
@@ -152,31 +98,10 @@ export default function Order() {
   };
 
   const handleCancel = async () => {
-    if (!activeOrder?.order_id || !user) return;
+    if (!activeOrder?.order_id) return;
     try {
       await axios.get(`/api/otp?order_id=${activeOrder.order_id}&status=cancel`);
-      
-      // Refund balance
-      if (activeOrder.deductedAmount) {
-        await updateDoc(doc(db, 'users', user.uid), {
-           balance: increment(activeOrder.deductedAmount)
-        });
-      }
-
-      if (activeOrder.firestoreDocId) {
-        await updateDoc(doc(db, 'orders', activeOrder.firestoreDocId), {
-          status: 'cancel'
-        });
-      }
-      
-      await addDoc(collection(db, 'notifications'), {
-        userId: user.uid,
-        message: `Order dibatalkan. Saldo dikembalikan.`,
-        type: 'error',
-        read: false,
-        createdAt: new Date().toISOString()
-      });
-
+      toast.success('Order dibatalkan');
       setActiveOrder(null);
     } catch (err) {
       toast.error('Gagal membatalkan');
@@ -208,8 +133,8 @@ export default function Order() {
                   required
                 >
                   <option value="">-- Pilih Layanan --</option>
-                  {services.map(s => (
-                    <option key={s.id} value={s.id}>{s.name} - Rp {s.price}</option>
+                  {services.map((s, idx) => (
+                    <option key={`service-${s.id || idx}-${idx}`} value={s.id}>{s.name} - Rp {s.price}</option>
                   ))}
                 </select>
               </div>
@@ -224,8 +149,8 @@ export default function Order() {
                   required
                 >
                   <option value="">-- Pilih Negara --</option>
-                  {countries.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                  {countries.map((c, idx) => (
+                    <option key={`country-${c.id || idx}-${idx}`} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>
@@ -239,8 +164,8 @@ export default function Order() {
                   disabled={!selectedCountry}
                 >
                   <option value="any">Any (Otomatis)</option>
-                  {operators.map(o => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
+                  {operators.map((o, idx) => (
+                    <option key={`op-${o.id || idx}-${idx}`} value={o.id}>{o.name}</option>
                   ))}
                 </select>
               </div>
